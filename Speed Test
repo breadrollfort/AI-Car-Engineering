@@ -1,0 +1,62 @@
+/*
+speed test and calibration for Robot car with speed sensor
+version 0.1
+date:   8/12/23
+*/
+const int pwm1 = 12;  /* GPIO12 (IN1)*/
+const int pwm2 = 13;  /* GPIO13 (IN2)*/
+const int odo = 14;  /* GPIO23 (speed sensor)*/
+unsigned long t0 = millis();
+unsigned long t1;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(pwm1, OUTPUT);
+  pinMode(pwm2, OUTPUT);
+  pinMode(odo, INPUT);
+  attachInterrupt(digitalPinToInterrupt(odo), Encoder, RISING);// from 0 to 1
+}
+
+int nloop = 0;
+int spsen = 0;
+float speed = 0;
+uint16_t np = 0; // number of pulse
+int spval = 50; //the sign of speed indicate the forward and backward and -255 < speed < 255.
+int dir = 1; //1 or -1 for increase and decrease the speed
+
+void loop() {
+  t1 = millis();
+  if(t1 - t0>1000){
+    getSpeed(); 
+    Serial.print(spval);
+    Serial.print(',');
+    spsen = digitalRead(odo);
+    Serial.println(spsen);
+    spval += dir * 10;
+    if(spval >= 200){
+      dir = -1;
+    }else if(spval <= -150){
+      dir = 1;
+    }
+    if(spval > 0){
+      analogWrite(pwm1, spval);
+      digitalWrite(pwm2, LOW);
+    }else{
+      digitalWrite(pwm1, LOW);
+      analogWrite(pwm2, abs(spval));
+    }
+    t0 = t1;
+  }
+}
+// =======================defined functions==========================
+void Encoder(){
+    np++;
+}
+
+void getSpeed(){
+    float rot = np/8; // 8 is the number of pulses per rotation
+    speed = rot * 45 * 3.14; // move speed in mm/s
+    Serial.print(np);
+    Serial.print(',');
+    np = 0;
+}
