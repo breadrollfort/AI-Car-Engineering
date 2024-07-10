@@ -1,0 +1,93 @@
+/*
+esp32 autonomous driving with laser range finder for RC car
+version 0.3
+date:   8/11/23
+*/
+#include <ESP32Servo.h>
+#include "Adafruit_VL53L0X.h"
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+
+#define PIN_SG90 2 // Output pin used
+const int pwm1 = 12;  /* GPIO12 (IN1)*/
+const int pwm2 = 13;  /* GPIO13 (IN2)*/
+const int odo = 14;  /* GPIO23 (speed sensor)*/
+Servo sg90;
+float rot;
+unsigned long t0 = millis();
+unsigned long t1;
+
+void setup() {
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println();
+
+  pinMode(pwm1, OUTPUT);
+  pinMode(pwm2, OUTPUT);
+  pinMode(odo, INPUT);
+  attachInterrupt(digitalPinToInterrupt(odo), Encoder, RISING);
+  sg90.setPeriodHertz(50); // PWM frequency for SG90
+  sg90.attach(PIN_SG90, 500, 2400); // Minimum and maximum pulse width (in µs) to go from 0° to 180  sg90.setPeriodHertz(50); // PWM frequency for SG90
+  if (!lox.begin()) {
+    Serial.println(F("Failed to boot VL53L0X"));
+    while(1);
+  }
+}
+
+int nloop = 0;
+int spsen = 0;
+uint16_t np = 0; // number of pulse
+int speed = 0; //the sign of speed indicate the forward and backward and -255 < speed < 255.
+int spflag = 1; //1 or -1 for increase and decrease the speed
+int angle = 90;
+VL53L0X_RangingMeasurementData_t measure;
+
+void loop() {
+  t1 = millis();
+  if(t1 - t0>400){
+    getSpeed(); 
+    Serial.print(speed);
+    Serial.print(',');
+    spsen = digitalRead(odo);
+    Serial.print(spsen);
+    Serial.print(',');
+    speed += spflag * 10;
+    if(speed >= 250){
+      spflag = -1;
+    }else if(speed <= -250){
+      spflag = 1;
+    }
+    if(speed > 0){
+      analogWrite(pwm2, speed);
+      digitalWrite(pwm1, LOW);
+    }else{
+      analogWrite(pwm2, LOW);
+      digitalWrite(pwm1, abs(speed));
+    }
+  // for(int angle = 0; angle < 180; angle +=10){
+    angle = 90;
+    sg90.write(angle);
+    // Serial.println(angle);
+    // Serial.print(",");
+    lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+    if (measure.RangeStatus != 4) {  // phase failures have incorrect data
+      // Serial.print(", Distance (mm): "); 
+      Serial.println(measure.RangeMilliMeter);
+    } else {
+      Serial.println("-1"); // out of range
+    }
+  // }
+    t0 = t1;
+  }
+}
+// =======================defined functions==========================
+void Encoder(){
+    np++;
+}
+
+void getSpeed(){
+    rot = np/8; // 8 is the number of pulses per rotation
+    // speed = rot/0.4; // rotation per second, rps, range 0.1 - 1.0
+    Serial.print(np);
+    Serial.print(",");
+    np = 0;
+}
