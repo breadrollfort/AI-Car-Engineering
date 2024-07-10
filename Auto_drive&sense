@@ -1,0 +1,88 @@
+/*
+esp32 autonomous driving with laser range finder for RC car
+version 0.3
+date:   7/2/24
+*/
+#include <ESP32Servo.h>
+#include "Adafruit_VL53L0X.h"
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+
+#define PIN_SG90 2 // Output pin used
+const int pwm1 = 12;  /* GPIO12 (IN1)*/
+const int pwm2 = 13;  /* GPIO13 (IN2)*/
+const int odo = 14;  /* GPIO23 (speed sensor)*/
+Servo sg90;
+float rot;
+unsigned long t0 = millis();
+unsigned long t1;
+
+void setup() {
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println();
+
+  pinMode(pwm1, OUTPUT);
+  pinMode(pwm2, OUTPUT);
+  pinMode(odo, INPUT);
+  attachInterrupt(digitalPinToInterrupt(odo), Encoder, RISING);
+  sg90.setPeriodHertz(50); // PWM frequency for SG90
+  sg90.attach(PIN_SG90, 500, 2400); // Minimum and maximum pulse width (in µs) to go from 0° to 180  sg90.setPeriodHertz(50); // PWM frequency for SG90
+
+
+  if (!lox.begin()) {
+    Serial.println(F("Failed to boot VL53L0X"));
+    while(1);
+  }
+}
+
+int nloop = 0;
+int spsen = 0;
+uint16_t np = 0; // number of pulse
+int speed = 3; //set the range from 1 to 10
+int stop = 1; //1 when detecting objective and 0 otherwise.
+int angle = 90;
+VL53L0X_RangingMeasurementData_t measure;
+int dist; //range sensor distance date
+
+void loop() {
+  t1 = millis();
+  if(t1 - t0>100){
+    lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+    if (measure.RangeStatus != 4) {  // phase failures have incorrect data
+      dist = measure.RangeMilliMeter;
+      Serial.print(", Distance (mm): "); 
+      Serial.println(dist);
+    } else {
+      Serial.println("-1"); // out of range
+    }
+    if(dist>200){
+      stop = 0;
+      sg90.write(50);
+    }else{
+      stop = 1;
+      sg90.write(90);
+    }
+
+    t0 = t1;
+  }
+  if(stop == 0){
+      digitalWrite(pwm2, HIGH);
+      digitalWrite(pwm1, LOW);
+
+  }else{
+      digitalWrite(pwm2, LOW);
+      digitalWrite(pwm1, LOW);
+  }
+}
+// =======================defined functions==========================
+void Encoder(){
+    np++;
+}
+
+void getSpeed(){
+    rot = np/8; // 8 is the number of pulses per rotation
+    // speed = rot/0.4; // rotation per second, rps, range 0.1 - 1.0
+    Serial.print(np);
+    Serial.print(",");
+    np = 0;
+}
